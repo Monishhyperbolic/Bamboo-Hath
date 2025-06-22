@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Compound Collateral Health Monitor</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- ethers.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+  <!-- Compound.js (local file, served via http-server) -->
+  <script src="/node_modules/compound-js/dist/compound.min.js"></script>
+  <!-- push.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/push.js@1.0.9/bin/push.min.js"></script>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col font-sans">
+  <!-- Header -->
+  <header class="bg-blue-600 text-white py-4 shadow-md">
+    <h1 class="text-2xl font-bold text-center">Compound Health Monitor (Sepolia)</h1>
+  </header>
+
+  <!-- Main Content -->
+  <main class="flex-grow p-4 max-w-4xl mx-auto w-full">
+    <!-- Wallet Connection -->
+    <section class="bg-white p-6 rounded-lg shadow-md mb-6">
+      <button id="connectWallet" class="w-full bg-blue-500 text-white py-3 rounded-lg hover:bg-blue-600 transition duration-300">
+        Connect Wallet
+      </button>
+      <div id="walletInfo" class="hidden mt-4 p-4 bg-gray-50 rounded-lg">
+        <p class="text-sm font-medium">Wallet: <span id="walletAddress" class="font-mono text-xs break-all"></span></p>
+        <p class="text-sm font-medium mt-2">Health Factor: <span id="healthFactor" class="font-bold text-green-600">N/A</span></p>
+        <p class="text-sm font-medium mt-2">Collateral Value: <span id="collateralValue" class="font-bold">N/A</span></p>
+        <p class="text-sm font-medium mt-2">Borrowed Value: <span id="borrowValue" class="font-bold">N/A</span></p>
+      </div>
+    </section>
+
+    <!-- Health Trend Chart -->
+    <section class="bg-white p-6 rounded-lg shadow-md mb-6">
+      <h2 class="text-lg font-semibold mb-4">Health Factor Trend</h2>
+      <canvas id="healthChart"></canvas>
+    </section>
+
+    <!-- Settings Form -->
+    <section class="bg-white p-6 rounded-lg shadow-md mb-6">
+      <h2 class="text-lg font-semibold mb-4">Notification Settings</h2>
+      <form id="settingsForm" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700">Alert Threshold (Health Factor)</label>
+          <input type="number" step="0.1" value="1.1" id="threshold" class="w-full border border-gray-300 p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <p class="text-xs text-gray-500 mt-1">Notify when health factor falls below this value (e.g., 1.1).</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700">Notification Email</label>
+          <input type="email" id="email" class="w-full border border-gray-300 p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="your@email.com">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700">Phone Number (for SMS)</label>
+          <input type="tel" id="phone" class="w-full border border-gray-300 p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="+12345678900">
+          <p class="text-xs text-gray-500 mt-1">Enter phone number in international format (e.g., +12345678900).</p>
+        </div>
+        <button type="submit" class="w-full bg-green-500 text-white py-3 rounded-lg hover:bg-green-600 transition duration-300">
+          Start Monitoring
+        </button>
+      </form>
+    </section>
+
+    <!-- Notification History -->
+    <section class="bg-white p-6 rounded-lg shadow-md">
+      <h2 class="text-lg font-semibold mb-4">Notification History</h2>
+      <ul id="notificationHistory" class="space-y-2"></ul>
+    </section>
+  </main>
+
+  <script>
+    // Initialize Compound.js with Sepolia provider
+    let provider;
+    let compound;
+    if (window.ethereum) {
+      provider = new ethers.providers.Web3Provider(window.ethereum);
+      compound = new window.Compound(provider, { network: 'sepolia' });
+    } else {
+      alert("Please install MetaMask!");
+    }
+
+    // Chart.js setup
+    let healthChart;
+    const healthData = { labels: [], datasets: [{ label: "Health Factor", data: [], borderColor: "rgb(75, 192, 192)", tension: 0.1 }] };
+    function initChart() {
+      const ctx = document.getElementById("healthChart").getContext("2d");
+      healthChart = new Chart(ctx, {
+        type: "line",
+        data: healthData,
+        options: { scales: { y: { beginAtZero: false } } }
+      });
+    }
+    initChart();
+
+    // Connect to MetaMask
+    async function connectWallet() {
+      if (!window.ethereum) {
+        alert("Please install MetaMask!");
+        return;
+      }
+      try {
+        await provider.send("eth_requestAccounts", []);
+        const signer = provider.getSigner();
+        const address = await signer.getAddress();
+        document.getElementById("walletAddress").textContent = address;
+        document.getElementById("walletInfo").classList.remove("hidden");
+        await updateDashboard(address);
+        fetchNotificationHistory(address);
+      } catch (error) {
+        console.error("Error connecting wallet:", error);
+        alert("Failed to connect wallet.");
+      }
+    }
+
+    // Update dashboard with health and balances
+    async function updateDashboard(address) {
+      try {
+        // Fetch account liquidity
+        const liquidityData = await compound.comptroller.getAccountLiquidity(address);
+        const healthFactor = liquidityData.liquidity > 0 
+          ? (liquidityData.liquidity / (liquidityData.liquidity + liquidityData.shortfall)).toFixed(2) 
+          : "0.00";
+        document.getElementById("healthFactor").textContent = healthFactor;
+
+        // Update chart
+        const now = new Date().toLocaleTimeString();
+        healthData.labels.push(now);
+        healthData.datasets[0].data.push(parseFloat(healthFactor));
+        if (healthData.labels.length > 10) {
+          healthData.labels.shift();
+          healthData.datasets[0].data.shift();
+        }
+        healthChart.update();
+
+        // Fetch collateral and borrow balances
+        const assetsIn = await compound.comptroller.getAssetsIn(address);
+        let totalCollateral = 0;
+        let totalBorrowed = 0;
+        for (const cTokenAddress of assetsIn) {
+          const balanceUnderlying = await compound.cToken.balanceOfUnderlying(address, cTokenAddress);
+          const borrowBalance = await compound.cToken.borrowBalanceCurrent(address, cTokenAddress);
+          totalCollateral += Number(ethers.utils.formatUnits(balanceUnderlying, 18));
+          totalBorrowed += Number(ethers.utils.formatUnits(borrowBalance, 18));
+        }
+        document.getElementById("collateralValue").textContent = `$${totalCollateral.toFixed(2)}`;
+        document.getElementById("borrowValue").textContent = `$${totalBorrowed.toFixed(2)}`;
+      } catch (error) {
+        console.error("Error updating dashboard:", error);
+        document.getElementById("healthFactor").textContent = "Error";
+      }
+    }
+
+    // Fetch notification history
+    async function fetchNotificationHistory(address) {
+      try {
+        const response = await fetch(`http://localhost:3000/notifications/${address}`);
+        const notifications = await response.json();
+        const historyList = document.getElementById("notificationHistory");
+        historyList.innerHTML = "";
+        notifications.forEach(notification => {
+          const li = document.createElement("li");
+          li.className = "text-sm text-gray-700 p-2 bg-gray-50 rounded";
+          li.textContent = `${new Date(notification.timestamp).toLocaleString()}: ${notification.message}`;
+          historyList.appendChild(li);
+        });
+      } catch (error) {
+        console.error("Error fetching notifications:", error);
+      }
+    }
+
+    // Handle wallet connection
+    document.getElementById("connectWallet").addEventListener("click", connectWallet);
+
+    // Handle settings form
+    document.getElementById("settingsForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const threshold = parseFloat(document.getElementById("threshold").value);
+      const email = document.getElementById("email").value;
+      const phone = document.getElementById("phone").value;
+      const address = document.getElementById("walletAddress").textContent;
+
+      if (!address) {
+        alert("Please connect your wallet first!");
+        return;
+      }
+
+      try {
+        const response = await fetch("http://localhost:3000/save-settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ address, threshold, email, phone })
+        });
+        if (response.ok) {
+          Push.create("Monitoring Started!", {
+            body: `We'll notify you if your health factor falls below ${threshold}.`,
+            timeout: 4000
+          });
+        } else {
+          alert("Failed to save settings. Try again.");
+        }
+      } catch (error) {
+        console.error("Error saving settings:", error);
+        alert("Error connecting to backend.");
+      }
+    });
+
+    // Request push notification permission
+    Push.Permission.request();
+  </script>
+</body>
+</html>
