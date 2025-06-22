@@ -34,6 +34,7 @@
         <p class="text-sm font-medium mt-2">Collateral Value: <span id="collateralValue" class="font-bold">N/A</span></p>
         <p class="text-sm font-medium mt-2">Borrowed Value: <span id="borrowValue" class="font-bold">N/A</span></p>
       </div>
+      <p id="errorMessage" class="hidden text-red-500 text-sm mt-2"></p>
     </section>
 
     <!-- Health Trend Chart -->
@@ -77,11 +78,24 @@
     // Initialize Compound.js with Sepolia provider
     let provider;
     let compound;
-    if (window.ethereum) {
-      provider = new ethers.providers.Web3Provider(window.ethereum);
-      compound = new window.Compound(provider, { network: 'sepolia' });
-    } else {
-      alert("Please install MetaMask!");
+    async function initializeWeb3() {
+      if (!window.ethereum) {
+        document.getElementById("errorMessage").classList.remove("hidden");
+        document.getElementById("errorMessage").textContent = "MetaMask is not installed. Please install MetaMask and try again.";
+        return false;
+      }
+      try {
+        provider = new ethers.providers.Web3Provider(window.ethereum);
+        // Switch to Sepolia
+        await provider.send("wallet_switchEthereumChain", [{ chainId: "0xaa36a7" }]); // Sepolia chain ID
+        compound = new window.Compound(provider, { network: 'sepolia' });
+        return true;
+      } catch (error) {
+        console.error("Error initializing Web3:", error);
+        document.getElementById("errorMessage").classList.remove("hidden");
+        document.getElementById("errorMessage").textContent = "Failed to initialize Web3. Please ensure MetaMask is set to Sepolia.";
+        return false;
+      }
     }
 
     // Chart.js setup
@@ -99,28 +113,30 @@
 
     // Connect to MetaMask
     async function connectWallet() {
-      if (!window.ethereum) {
-        alert("Please install MetaMask!");
-        return;
-      }
+      const initialized = await initializeWeb3();
+      if (!initialized) return;
+
       try {
         await provider.send("eth_requestAccounts", []);
         const signer = provider.getSigner();
         const address = await signer.getAddress();
         document.getElementById("walletAddress").textContent = address;
         document.getElementById("walletInfo").classList.remove("hidden");
+        document.getElementById("errorMessage").classList.add("hidden");
         await updateDashboard(address);
         fetchNotificationHistory(address);
       } catch (error) {
         console.error("Error connecting wallet:", error);
-        alert("Failed to connect wallet.");
+        document.getElementById("errorMessage").classList.remove("hidden");
+        document.getElementById("errorMessage").textContent = error.message.includes("user rejected") 
+          ? "Connection rejected. Please approve the connection in MetaMask."
+          : "Failed to connect wallet. Please try again.";
       }
     }
 
     // Update dashboard with health and balances
     async function updateDashboard(address) {
       try {
-        // Fetch account liquidity
         const liquidityData = await compound.comptroller.getAccountLiquidity(address);
         const healthFactor = liquidityData.liquidity > 0 
           ? (liquidityData.liquidity / (liquidityData.liquidity + liquidityData.shortfall)).toFixed(2) 
@@ -152,6 +168,8 @@
       } catch (error) {
         console.error("Error updating dashboard:", error);
         document.getElementById("healthFactor").textContent = "Error";
+        document.getElementById("errorMessage").classList.remove("hidden");
+        document.getElementById("errorMessage").textContent = "Failed to fetch Compound data. Please try again.";
       }
     }
 
@@ -170,6 +188,8 @@
         });
       } catch (error) {
         console.error("Error fetching notifications:", error);
+        document.getElementById("errorMessage").classList.remove("hidden");
+        document.getElementById("errorMessage").textContent = "Failed to fetch notification history.";
       }
     }
 
@@ -185,7 +205,8 @@
       const address = document.getElementById("walletAddress").textContent;
 
       if (!address) {
-        alert("Please connect your wallet first!");
+        document.getElementById("errorMessage").classList.remove("hidden");
+        document.getElementById("errorMessage").textContent = "Please connect your wallet first!";
         return;
       }
 
@@ -200,12 +221,14 @@
             body: `We'll notify you if your health factor falls below ${threshold}.`,
             timeout: 4000
           });
+          document.getElementById("errorMessage").classList.add("hidden");
         } else {
-          alert("Failed to save settings. Try again.");
+          throw new Error("Failed to save settings.");
         }
       } catch (error) {
         console.error("Error saving settings:", error);
-        alert("Error connecting to backend.");
+        document.getElementById("errorMessage").classList.remove("hidden");
+        document.getElementById("errorMessage").textContent = "Error connecting to backend. Please try again.";
       }
     });
 
