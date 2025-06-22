@@ -40,7 +40,33 @@
       <h2 class="text-lg font-semibold mb-4">Health Factor Trend</h2>
       <canvas id="healthChart"></canvas>
     </section>
-    <!-- Settings Form -->
+    <!-- Backend API Simulation Info -->
+    <section class="bg-red-50 border border-red-200 p-4 rounded-lg shadow-sm mb-6">
+      <h3 class="text-lg font-semibold text-red-800 mb-2">⚠️ NotificationAPI Setup Required</h3>
+      <p class="text-sm text-red-700 mb-3">
+        NotificationAPI requires a backend server. Current status: <span class="font-bold">Browser-only mode</span>
+      </p>
+      <div class="bg-red-100 p-3 rounded text-xs font-mono text-red-800 mb-3">
+        <strong>To enable SMS/Email notifications, create this backend:</strong><br><br>
+        <div class="bg-white p-2 rounded border">
+          // server.js<br>
+          const express = require('express');<br>
+          const notificationapi = require('notificationapi-node-server-sdk').default;<br><br>
+          notificationapi.init(<br>
+          &nbsp;&nbsp;'a4lsubuvif0i11gsbtlgdtseby',<br>
+          &nbsp;&nbsp;'uf3fq44h7ewonz64mnte4ugfedrgwcnix435qf7zxir5qaapumzwdr4xyj'<br>
+          );<br><br>
+          app.post('/api/notify', async (req, res) => {<br>
+          &nbsp;&nbsp;const result = await notificationapi.send(req.body);<br>
+          &nbsp;&nbsp;res.json(result.data);<br>
+          });
+        </div>
+      </div>
+      <button id="testBackend" class="bg-blue-500 text-white px-4 py-2 rounded text-sm hover:bg-blue-600">
+        Test Backend Connection
+      </button>
+      <span id="backendStatus" class="ml-2 text-sm"></span>
+    </section>
     <section class="bg-white p-6 rounded-lg shadow-md mb-6">
       <h2 class="text-lg font-semibold mb-4">Notification Settings</h2>
       <form id="settingsForm" class="space-y-4">
@@ -192,46 +218,147 @@
 
     // NotificationAPI configuration
     const NOTIFICATION_API_CONFIG = {
+      backendUrl: 'http://localhost:3000/api/notify', // Your backend URL
       clientId: 'a4lsubuvif0i11gsbtlgdtseby',
-      clientSecret: 'uf3fq44h7ewonz64mnte4ugfedrgwcnix435qf7zxir5qaapumzwdr4xyj'
+      fallbackEmail: 'patilmonish89@gmail.com',
+      fallbackPhone: '+15005550006'
     };
 
-    // Send notification via NotificationAPI
-    async function sendNotification(email, phone, message, healthFactor, threshold) {
+    // Test backend connection
+    async function testBackendConnection() {
+      const statusEl = document.getElementById('backendStatus');
+      statusEl.textContent = 'Testing...';
+      statusEl.className = 'ml-2 text-sm text-yellow-600';
+      
       try {
-        // In a real application, this would be sent to your backend
-        // For demo purposes, we'll simulate the API call
+        const response = await fetch(NOTIFICATION_API_CONFIG.backendUrl + '/health', {
+          method: 'GET',
+          mode: 'cors'
+        });
+        
+        if (response.ok) {
+          statusEl.textContent = '✅ Backend Connected';
+          statusEl.className = 'ml-2 text-sm text-green-600';
+          return true;
+        } else {
+          throw new Error('Backend not responding');
+        }
+      } catch (error) {
+        statusEl.textContent = '❌ Backend Offline (Using browser-only mode)';
+        statusEl.className = 'ml-2 text-sm text-red-600';
+        return false;
+      }
+    }
+
+    // Send notification via NotificationAPI backend
+    async function sendNotificationAPI(email, phone, message, healthFactor, threshold) {
+      try {
         const notificationData = {
           type: 'alert',
           to: {
-            email: email || 'patilmonish89@gmail.com',
-            number: phone || '+15005550006'
+            email: email || NOTIFICATION_API_CONFIG.fallbackEmail,
+            number: phone || NOTIFICATION_API_CONFIG.fallbackPhone
           },
           parameters: {
             healthFactor: healthFactor,
             threshold: threshold,
             message: message,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            walletAddress: document.getElementById("walletAddress").textContent
           }
         };
 
-        // Simulate API call to backend that would use NotificationAPI
-        console.log('Sending notification via NotificationAPI:', notificationData);
+        console.log('Attempting to send via NotificationAPI:', notificationData);
         
-        // In production, this would be:
-        // const response = await fetch('/api/send-notification', {
-        //   method: 'POST',
-        //   headers: { 'Content-Type': 'application/json' },
-        //   body: JSON.stringify(notificationData)
-        // });
-        
-        // For demo, we'll show success
-        showNotification("Alert Sent", `Notification sent to ${email || 'default email'}`);
-        return { success: true, data: notificationData };
+        const response = await fetch(NOTIFICATION_API_CONFIG.backendUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          mode: 'cors',
+          body: JSON.stringify(notificationData)
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          console.log('NotificationAPI success:', result);
+          return { success: true, data: result, method: 'NotificationAPI' };
+        } else {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
         
       } catch (error) {
-        console.error('Error sending notification:', error);
+        console.warn('NotificationAPI failed:', error.message);
         return { success: false, error: error.message };
+      }
+    }
+
+    // Fallback notification methods
+    async function sendBrowserNotification(message) {
+      // Request permission if not granted
+      if (Notification.permission === 'default') {
+        await Notification.requestPermission();
+      }
+      
+      if (Notification.permission === 'granted') {
+        new Notification('🚨 Compound Health Alert', {
+          body: message,
+          icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="red"><path d="M12 2L1 21h22L12 2zm0 3.99L19.53 19H4.47L12 5.99zM11 16h2v2h-2v-2zm0-6h2v4h-2v-4z"/></svg>',
+          requireInteraction: true
+        });
+        return true;
+      }
+      return false;
+    }
+
+    async function sendEmailFallback(email, message) {
+      // Use mailto as fallback
+      if (email) {
+        const subject = encodeURIComponent('🚨 Compound Health Alert');
+        const body = encodeURIComponent(message + '\n\nSent from Compound Health Monitor');
+        const mailtoUrl = `mailto:${email}?subject=${subject}&body=${body}`;
+        
+        // Open in new tab so it doesn't interrupt the app
+        window.open(mailtoUrl, '_blank');
+        return true;
+      }
+      return false;
+    }
+
+    // Main notification function with fallbacks
+    async function sendNotification(email, phone, message, healthFactor, threshold) {
+      const results = [];
+      
+      // Try NotificationAPI first
+      const apiResult = await sendNotificationAPI(email, phone, message, healthFactor, threshold);
+      results.push(apiResult);
+      
+      if (apiResult.success) {
+        showNotification("✅ Alert Sent", `SMS & Email sent via NotificationAPI`);
+        return { success: true, method: 'NotificationAPI', results };
+      }
+      
+      // Fallback methods
+      console.log('Trying fallback notification methods...');
+      
+      // Browser notification
+      const browserSuccess = await sendBrowserNotification(message);
+      results.push({ success: browserSuccess, method: 'Browser' });
+      
+      // Email fallback
+      const emailSuccess = await sendEmailFallback(email, message);
+      results.push({ success: emailSuccess, method: 'Email' });
+      
+      // Show result
+      const successfulMethods = results.filter(r => r.success).map(r => r.method);
+      
+      if (successfulMethods.length > 0) {
+        showNotification("⚠️ Alert Sent", `Notification sent via: ${successfulMethods.join(', ')}`);
+        return { success: true, methods: successfulMethods, results };
+      } else {
+        showNotification("❌ Alert Failed", "All notification methods failed");
+        return { success: false, error: "All methods failed", results };
       }
     }
     function showError(message) {
@@ -342,12 +469,12 @@
         const email = document.getElementById("email").value;
         const phone = document.getElementById("phone").value;
         
-        // Send via NotificationAPI
+        // Send notification with fallbacks
         const result = await sendNotification(email, phone, message, healthFactor, threshold);
         
         if (result.success) {
-          showNotification("Health Alert", message);
           addNotificationToHistory(message, 'alert');
+          addNotificationToHistory(`Sent via: ${result.methods ? result.methods.join(', ') : result.method}`, 'success');
         } else {
           addNotificationToHistory(`Failed to send alert: ${result.error}`, 'error');
         }
@@ -416,6 +543,9 @@
       }, 5000); // Update every 5 seconds
     }
 
+    // Handle test backend button
+    document.getElementById("testBackend").addEventListener("click", testBackendConnection);
+
     // Handle wallet connection
     document.getElementById("connectWallet").addEventListener("click", connectWallet);
 
@@ -441,11 +571,16 @@
       console.log("Settings saved:", { address, threshold, email, phone });
       
       // Test notification to confirm settings work
-      await sendNotification(email, phone, 
-        `✅ Monitoring started for wallet ${address.substring(0, 6)}...${address.substring(-4)}. Threshold: ${threshold}`,
-        null, threshold);
+      const testMessage = `✅ Monitoring started for wallet ${address.substring(0, 6)}...${address.substring(-4)}. Threshold: ${threshold}`;
+      const result = await sendNotification(email, phone, testMessage, null, threshold);
       
-      addNotificationToHistory(`Monitoring started with threshold ${threshold}`, 'success');
+      if (result.success) {
+        addNotificationToHistory(`Monitoring started with threshold ${threshold}`, 'success');
+        addNotificationToHistory(`Test notification sent via: ${result.methods ? result.methods.join(', ') : result.method}`, 'info');
+      } else {
+        addNotificationToHistory(`Monitoring started but notification test failed: ${result.error}`, 'error');
+      }
+      
       hideError();
       
       // Start monitoring with new threshold
