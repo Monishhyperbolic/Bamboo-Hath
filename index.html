@@ -75,6 +75,16 @@
   </main>
 
   <script>
+    // Sepolia network configuration
+    const SEPOLIA_CHAIN_ID = "0xaa36a7"; // 11155111 in hex
+    const SEPOLIA_CONFIG = {
+      chainId: SEPOLIA_CHAIN_ID,
+      chainName: "Sepolia",
+      nativeCurrency: { name: "Sepolia ETH", symbol: "ETH", decimals: 18 },
+      rpcUrls: ["https://sepolia.infura.io/v3/YOUR_INFURA_KEY"],
+      blockExplorerUrls: ["https://sepolia.etherscan.io"]
+    };
+
     // Initialize Compound.js with Sepolia provider
     let provider;
     let compound;
@@ -82,18 +92,43 @@
       if (!window.ethereum) {
         document.getElementById("errorMessage").classList.remove("hidden");
         document.getElementById("errorMessage").textContent = "MetaMask is not installed. Please install MetaMask and try again.";
+        console.error("MetaMask not detected.");
         return false;
       }
+
       try {
         provider = new ethers.providers.Web3Provider(window.ethereum);
-        // Switch to Sepolia
-        await provider.send("wallet_switchEthereumChain", [{ chainId: "0xaa36a7" }]); // Sepolia chain ID
+        console.log("Provider initialized:", provider);
+
+        // Check current network
+        const { chainId } = await provider.getNetwork();
+        console.log("Current chain ID:", chainId.toString(16));
+
+        if (chainId.toString(16) !== SEPOLIA_CHAIN_ID.replace("0x", "")) {
+          console.log("Attempting to switch to Sepolia...");
+          try {
+            await provider.send("wallet_switchEthereumChain", [{ chainId: SEPOLIA_CHAIN_ID }]);
+            console.log("Switched to Sepolia.");
+          } catch (switchError) {
+            if (switchError.code === 4902) {
+              console.log("Sepolia not found in MetaMask. Adding network...");
+              await provider.send("wallet_addEthereumChain", [SEPOLIA_CONFIG]);
+              console.log("Sepolia added.");
+            } else {
+              throw switchError;
+            }
+          }
+        } else {
+          console.log("Already on Sepolia network.");
+        }
+
         compound = new window.Compound(provider, { network: 'sepolia' });
+        console.log("Compound.js initialized.");
         return true;
       } catch (error) {
         console.error("Error initializing Web3:", error);
         document.getElementById("errorMessage").classList.remove("hidden");
-        document.getElementById("errorMessage").textContent = "Failed to initialize Web3. Please ensure MetaMask is set to Sepolia.";
+        document.getElementById("errorMessage").textContent = `Failed to initialize Web3: ${error.message}. Please check MetaMask settings.`;
         return false;
       }
     }
@@ -120,6 +155,7 @@
         await provider.send("eth_requestAccounts", []);
         const signer = provider.getSigner();
         const address = await signer.getAddress();
+        console.log("Connected wallet:", address);
         document.getElementById("walletAddress").textContent = address;
         document.getElementById("walletInfo").classList.remove("hidden");
         document.getElementById("errorMessage").classList.add("hidden");
@@ -130,7 +166,7 @@
         document.getElementById("errorMessage").classList.remove("hidden");
         document.getElementById("errorMessage").textContent = error.message.includes("user rejected") 
           ? "Connection rejected. Please approve the connection in MetaMask."
-          : "Failed to connect wallet. Please try again.";
+          : `Failed to connect wallet: ${error.message}`;
       }
     }
 
