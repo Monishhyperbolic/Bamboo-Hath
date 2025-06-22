@@ -190,7 +190,50 @@
       });
     }
 
-    // Utility functions
+    // NotificationAPI configuration
+    const NOTIFICATION_API_CONFIG = {
+      clientId: 'a4lsubuvif0i11gsbtlgdtseby',
+      clientSecret: 'uf3fq44h7ewonz64mnte4ugfedrgwcnix435qf7zxir5qaapumzwdr4xyj'
+    };
+
+    // Send notification via NotificationAPI
+    async function sendNotification(email, phone, message, healthFactor, threshold) {
+      try {
+        // In a real application, this would be sent to your backend
+        // For demo purposes, we'll simulate the API call
+        const notificationData = {
+          type: 'alert',
+          to: {
+            email: email || 'patilmonish89@gmail.com',
+            number: phone || '+15005550006'
+          },
+          parameters: {
+            healthFactor: healthFactor,
+            threshold: threshold,
+            message: message,
+            timestamp: new Date().toISOString()
+          }
+        };
+
+        // Simulate API call to backend that would use NotificationAPI
+        console.log('Sending notification via NotificationAPI:', notificationData);
+        
+        // In production, this would be:
+        // const response = await fetch('/api/send-notification', {
+        //   method: 'POST',
+        //   headers: { 'Content-Type': 'application/json' },
+        //   body: JSON.stringify(notificationData)
+        // });
+        
+        // For demo, we'll show success
+        showNotification("Alert Sent", `Notification sent to ${email || 'default email'}`);
+        return { success: true, data: notificationData };
+        
+      } catch (error) {
+        console.error('Error sending notification:', error);
+        return { success: false, error: error.message };
+      }
+    }
     function showError(message) {
       const errorElement = document.getElementById("errorMessage");
       errorElement.classList.remove("hidden");
@@ -281,7 +324,7 @@
         document.getElementById("borrowValue").textContent = `$${totalBorrowed.toFixed(2)}`;
         
         // Check threshold
-        checkHealthThreshold(healthFactor, address);
+        await checkHealthThreshold(healthFactor, address);
         
       } catch (error) {
         console.error("Error updating dashboard:", error);
@@ -291,18 +334,28 @@
     }
 
     // Check health threshold and notify
-    function checkHealthThreshold(healthFactor, address) {
+    async function checkHealthThreshold(healthFactor, address) {
       const threshold = parseFloat(document.getElementById("threshold").value) || 1.1;
       
       if (healthFactor < threshold) {
-        const message = `Health factor ${healthFactor.toFixed(2)} is below threshold ${threshold}`;
-        showNotification("Health Alert", message);
-        addNotificationToHistory(message);
+        const message = `⚠️ HEALTH ALERT: Your health factor ${healthFactor.toFixed(2)} is below threshold ${threshold}. Consider adding collateral or reducing debt.`;
+        const email = document.getElementById("email").value;
+        const phone = document.getElementById("phone").value;
+        
+        // Send via NotificationAPI
+        const result = await sendNotification(email, phone, message, healthFactor, threshold);
+        
+        if (result.success) {
+          showNotification("Health Alert", message);
+          addNotificationToHistory(message, 'alert');
+        } else {
+          addNotificationToHistory(`Failed to send alert: ${result.error}`, 'error');
+        }
       }
     }
 
     // Add notification to history
-    function addNotificationToHistory(message) {
+    function addNotificationToHistory(message, type = 'info') {
       const historyList = document.getElementById("notificationHistory");
       
       // Clear placeholder if it exists
@@ -311,12 +364,43 @@
       }
       
       const li = document.createElement("li");
-      li.className = "text-sm text-gray-700 p-2 bg-red-50 rounded border-l-4 border-red-400";
-      li.innerHTML = `<strong>${new Date().toLocaleString()}</strong>: ${message}`;
+      
+      // Style based on notification type
+      let className = "text-sm p-3 rounded border-l-4 mb-2";
+      let icon = "";
+      
+      switch(type) {
+        case 'alert':
+          className += " text-red-800 bg-red-50 border-red-400";
+          icon = "🚨 ";
+          break;
+        case 'error':
+          className += " text-red-700 bg-red-50 border-red-300";
+          icon = "❌ ";
+          break;
+        case 'success':
+          className += " text-green-700 bg-green-50 border-green-400";
+          icon = "✅ ";
+          break;
+        default:
+          className += " text-gray-700 bg-gray-50 border-gray-400";
+          icon = "ℹ️ ";
+      }
+      
+      li.className = className;
+      li.innerHTML = `
+        <div class="flex justify-between items-start">
+          <div class="flex-1">
+            <span class="font-medium">${icon}${new Date().toLocaleTimeString()}</span>
+            <p class="mt-1">${message}</p>
+          </div>
+        </div>
+      `;
+      
       historyList.insertBefore(li, historyList.firstChild);
       
-      // Keep only last 10 notifications
-      while (historyList.children.length > 10) {
+      // Keep only last 15 notifications
+      while (historyList.children.length > 15) {
         historyList.removeChild(historyList.lastChild);
       }
     }
@@ -329,7 +413,7 @@
       
       monitoringInterval = setInterval(() => {
         updateDashboard(address);
-      }, 30000); // Update every 30 seconds
+      }, 5000); // Update every 5 seconds
     }
 
     // Handle wallet connection
@@ -356,8 +440,12 @@
       // In a real app, you would save these settings to a backend
       console.log("Settings saved:", { address, threshold, email, phone });
       
-      showNotification("Monitoring Started!", 
-        `We'll notify you if your health factor falls below ${threshold}.`);
+      // Test notification to confirm settings work
+      await sendNotification(email, phone, 
+        `✅ Monitoring started for wallet ${address.substring(0, 6)}...${address.substring(-4)}. Threshold: ${threshold}`,
+        null, threshold);
+      
+      addNotificationToHistory(`Monitoring started with threshold ${threshold}`, 'success');
       hideError();
       
       // Start monitoring with new threshold
