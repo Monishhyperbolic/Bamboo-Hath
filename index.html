@@ -5,22 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Compound Collateral Health Monitor</title>
   <!-- Tailwind CSS CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="[invalid url, do not cite]
   <!-- ethers.js CDN -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
-  <!-- Compound.js (local file, served via http-server) -->
-  <script src="/node_modules/compound-js/dist/compound.min.js"></script>
+  <script src="[invalid url, do not cite]
+  <!-- Compound.js CDN -->
+  <script type="text/javascript" src="[invalid url, do not cite]" defer></script>
   <!-- push.js CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/push.js@1.0.9/bin/push.min.js"></script>
+  <script src="[invalid url, do not cite]
   <!-- Chart.js CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="[invalid url, do not cite]
 </head>
 <body class="bg-gray-100 min-h-screen flex flex-col font-sans">
   <!-- Header -->
   <header class="bg-blue-600 text-white py-4 shadow-md">
     <h1 class="text-2xl font-bold text-center">Compound Health Monitor (Sepolia)</h1>
   </header>
-
   <!-- Main Content -->
   <main class="flex-grow p-4 max-w-4xl mx-auto w-full">
     <!-- Wallet Connection -->
@@ -36,13 +35,11 @@
       </div>
       <p id="errorMessage" class="hidden text-red-500 text-sm mt-2"></p>
     </section>
-
     <!-- Health Trend Chart -->
     <section class="bg-white p-6 rounded-lg shadow-md mb-6">
       <h2 class="text-lg font-semibold mb-4">Health Factor Trend</h2>
       <canvas id="healthChart"></canvas>
     </section>
-
     <!-- Settings Form -->
     <section class="bg-white p-6 rounded-lg shadow-md mb-6">
       <h2 class="text-lg font-semibold mb-4">Notification Settings</h2>
@@ -66,26 +63,23 @@
         </button>
       </form>
     </section>
-
     <!-- Notification History -->
     <section class="bg-white p-6 rounded-lg shadow-md">
       <h2 class="text-lg font-semibold mb-4">Notification History</h2>
       <ul id="notificationHistory" class="space-y-2"></ul>
     </section>
   </main>
-
   <script>
     // Sepolia network configuration
-    const SEPOLIA_CHAIN_ID = "0xaa36a7"; // 11155111 in hex
+    const SEPOLIA_CHAIN_ID = "0xaa36a7";
     const SEPOLIA_CONFIG = {
       chainId: SEPOLIA_CHAIN_ID,
       chainName: "Sepolia",
       nativeCurrency: { name: "Sepolia ETH", symbol: "ETH", decimals: 18 },
-      rpcUrls: ["https://sepolia.infura.io/v3/YOUR_INFURA_KEY"],
-      blockExplorerUrls: ["https://sepolia.etherscan.io"]
+      rpcUrls: ["[invalid url, do not cite]
+      blockExplorerUrls: ["[invalid url, do not cite]
     };
 
-    // Initialize Compound.js with Sepolia provider
     let provider;
     let compound;
     async function initializeWeb3() {
@@ -122,13 +116,17 @@
           console.log("Already on Sepolia network.");
         }
 
+        // Check if Compound.js is loaded
+        if (typeof window.Compound !== 'function') {
+          throw new Error("Compound.js is not loaded or not a constructor. Ensure the script is included and loaded correctly.");
+        }
         compound = new window.Compound(provider, { network: 'sepolia' });
         console.log("Compound.js initialized.");
         return true;
       } catch (error) {
         console.error("Error initializing Web3:", error);
         document.getElementById("errorMessage").classList.remove("hidden");
-        document.getElementById("errorMessage").textContent = `Failed to initialize Web3: ${error.message}. Please check MetaMask settings.`;
+        document.getElementById("errorMessage").textContent = `Failed to initialize Web3: ${error.message}. Please check MetaMask settings and ensure Compound.js is loaded.`;
         return false;
       }
     }
@@ -212,7 +210,7 @@
     // Fetch notification history
     async function fetchNotificationHistory(address) {
       try {
-        const response = await fetch(`http://localhost:3000/notifications/${address}`);
+        const response = await fetch(`[invalid url, do not cite]);
         const notifications = await response.json();
         const historyList = document.getElementById("notificationHistory");
         historyList.innerHTML = "";
@@ -247,7 +245,7 @@
       }
 
       try {
-        const response = await fetch("http://localhost:3000/save-settings", {
+        const response = await fetch("[invalid url, do not cite] {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ address, threshold, email, phone })
